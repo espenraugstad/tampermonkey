@@ -15,43 +15,54 @@
     const dict = {
         "en-GB": {
             "download": "Download as CSV",
+            "people": "People",
+            "empty": "Could not find any people."
         },
         "en-US": {
             "download": "Download as CSV",
+            "people": "People",
+            "empty": "Could not find any people."
         },
         "en-AU": {
             "download": "Download as CSV",
+            "people": "People",
+            "empty": "Could not find any people."
         },
-         "en-CA": {
+        "en-CA": {
             "download": "Download as CSV",
+            "people": "People",
+            "empty": "Could not find any people."
         },
         "nb": {
             "download": "Last ned som CSV",
+            "people": "Personer",
+            "empty": "Kunne ikke finne noen personer."
         },
         "nb-x-k12": {
             "download": "Last ned som CSV",
+            "people": "Personer",
+            "empty": "Kunne ikke finne noen personer."
         },
         "de": {
             "download": "Als CSV herunterladen",
+            "people": "Personen",
+            "empty": "Konnte keine Personen finden."
         }
     }
 
     function i18n(word){
         const systemDefault = "nb";
-        let locale = ENV.LOCALE;
+        let locale = "";
+        try{
+            locale = ENV.LOCALE;
+        } catch (error) {
+            console.error("Unable to retrieve locale from ENV: ", error);
+            locale = systemDefault;
+        }
 
-        let localeDictionary = dict[locale] || dict[systemDefault];
+        let localeDictionary = dict[locale];
         return localeDictionary[word] || word;
 
-    }
-
-    function containsHeaders(row){
-        for(const child of row.childNodes){
-            if(child.nodeName === "TH"){
-                return true;
-            }
-        }
-        return false;
     }
 
     function hasLabel(el){
@@ -68,9 +79,30 @@
         return divs.length > 1;
     }
 
+    function processDivs(col){
+        let divData = "";
+        let divs = col.querySelectorAll("div");
+        // Add the divs sequentially with a space
+        for(const div of divs){
+            divData = divData + div.outerText + " | ";
+        }
+        // Remove the last space and separator
+        return (divData.slice(0,divData.length - 2) + ";");
+    }
+
+    function processLabels(col){
+        // This column has a label, likely the person has been invited but not accepted yet
+        // Convert the string to array, pop off the label and join the remaining string.
+        let ar = col.outerText.split(" ");
+        let statusMsg = ar.pop();
+        let dataWithoutLabel = ar.join(" ");
+        return [statusMsg, dataWithoutLabel];
+    }
+
     function downloadList(){
         const findPeople = setInterval(()=>{
             const rows = document.querySelectorAll("tr");
+            const emptyState = document.querySelectorAll(".roster-empty-state");
             if(rows.length > 0){
                 clearInterval(findPeople);
                 let data = "";
@@ -93,19 +125,11 @@
                                     // Not a header****************************************************
                                     // We need to check if this cell contains more than one div, and if so, we need to combine them
                                     if(hasDivs(col)){
-                                        let divs = col.querySelectorAll("div");
-                                        // Add the divs sequentially with a space
-                                        for(const div of divs){
-                                            data = data + div.outerText + " | ";
-                                        }
-                                        // Remove the last space and separator
-                                        data = data.slice(0,data.length - 2) + ";";
+                                        data = data + processDivs(col);
                                     } else if(hasLabel(col)){
-                                        // This column has a label, likely the person has been invited but not accepted yet
-                                        // Convert the string to array, pop off the label and join the remaining string.
-                                        let ar = col.outerText.split(" ");
-                                        statusMsg = ar.pop();
-                                        data = data + ar.join(" ") + ";";
+                                        let [status, dataWithoutLabel] = processLabels(col);
+                                        statusMsg = status;
+                                        data = data + dataWithoutLabel + ";";
                                     }
                                     else{
                                         data = data + col.outerText + ";";
@@ -134,19 +158,29 @@
                     // End of row - remove the last ; and replace it with a line break
                     data = data.slice(0,data.length - 1) + "\n";
                 }
-                console.log(data);
                 // Create a blob from the data
                 const blob = new Blob(["\uFEFF"+data], { type: 'text/csv;charset=UTF-8' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'data.csv';
+                let courseName = "";
+                try{
+                    courseName = ENV.current_context.name;
+                } catch(error){
+                    console.error("Unable to locate course name: ", error);
+                    courseName = "-";
+                }
+                a.download = i18n("people") + " " + courseName + '.csv';
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-            }else {
-                console.log("Searching...");
+            }else if(emptyState.length > 0){
+                alert(i18n("empty"));
+                clearInterval(findPeople);
+
+            } else {
+                console.log("Searching for people...");
             }
         },1000);
     }
@@ -159,8 +193,9 @@
             clearInterval(addButton);
             // Add a download button
             let dlbtn = document.createElement("button");
-            dlbtn.innerText = i18n("download");
+            dlbtn.innerText = i18n("download") ;
             dlbtn.classList.add("Button", "Button--primary");
+            dlbtn.setAttribute("aria-label", i18n("download"));
             place.appendChild(dlbtn);
             dlbtn.addEventListener("click", ()=>{
                 downloadList();
